@@ -78,6 +78,9 @@ body { font-family: Inter, "Segoe UI", Arial, sans-serif; letter-spacing: 0; }
 .fm-primary-button:hover { background: #38cbbb; }
 .fm-readout-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .fm-coordinates { font: 600 13px/1.5 Consolas, monospace; }
+.fm-map-link { display: inline-flex; align-items: center; gap: 6px; margin-top: 7px; color: var(--fm-accent); font-size: 11px; text-decoration: none; }
+.fm-map-link:hover, .fm-map-link:focus-visible { color: #38cbbb; text-decoration: underline; outline: none; }
+.fm-map-link.fm-disabled { display: none; }
 .fm-active-value { margin-top: 12px; padding: 12px 0; border-top: 1px solid var(--fm-line); border-bottom: 1px solid var(--fm-line); }
 .fm-active-value span { display: block; color: var(--fm-muted); font-size: 10px; text-transform: uppercase; }
 .fm-active-value strong { display: block; margin-top: 4px; color: var(--fm-accent); font-size: 22px; font-weight: 650; }
@@ -592,7 +595,11 @@ body { font-family: Inter, "Segoe UI", Arial, sans-serif; letter-spacing: 0; }
     </div>
     <div class="fm-section">
       <div class="fm-readout-head">
-        <div><div class="fm-section-title">Selected point</div><div id="fm-coordinates" class="fm-coordinates">No point selected</div></div>
+        <div>
+          <div class="fm-section-title">Selected point</div>
+          <div id="fm-coordinates" class="fm-coordinates">No point selected</div>
+          <a id="fm-google-maps" class="fm-map-link fm-disabled" href="#" target="_blank" rel="noopener"><i class="fa fa-up-right-from-square"></i>Open in Google Maps</a>
+        </div>
         <button id="fm-copy" class="fm-icon-button" title="Copy coordinates" aria-label="Copy coordinates"><i class="fa fa-copy"></i></button>
       </div>
       <div class="fm-active-value"><span id="fm-active-value-name">Selected raster</span><strong id="fm-active-value">--</strong></div>
@@ -808,6 +815,12 @@ window.addEventListener('load', function () {
     document.querySelectorAll('.fm-layer-group').forEach(updateGroupToggle);
   }
 
+  function googleMapsUrl(latlng) {
+    const lat = latlng.lat.toFixed(7);
+    const lng = latlng.lng.toFixed(7);
+    return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(lat + ',' + lng);
+  }
+
   function selectLayer(layer) {
     selectedLayer = layer;
     document.querySelectorAll('.fm-layer-row').forEach(row => row.classList.toggle('fm-selected', row.dataset.layerId === layer.id));
@@ -895,6 +908,9 @@ window.addEventListener('load', function () {
     selectedLatLng = latlng;
     const coordinateText = latlng.lat.toFixed(6) + ', ' + latlng.lng.toFixed(6);
     document.getElementById('fm-coordinates').textContent = coordinateText;
+    const mapsLink = document.getElementById('fm-google-maps');
+    mapsLink.href = googleMapsUrl(latlng);
+    mapsLink.classList.remove('fm-disabled');
     document.getElementById('fm-latitude').value = latlng.lat.toFixed(7);
     document.getElementById('fm-longitude').value = latlng.lng.toFixed(7);
     document.getElementById('fm-active-value-name').textContent = selectedLayer.name;
@@ -959,8 +975,22 @@ window.addEventListener('load', function () {
       showToast('Location is not available in this browser');
       return;
     }
+    if (locationWatchId !== null) {
+      navigator.geolocation.clearWatch(locationWatchId);
+      locationWatchId = null;
+      if (locationMarker) {
+        map.removeLayer(locationMarker);
+        locationMarker = null;
+      }
+      if (locationAccuracyCircle) {
+        map.removeLayer(locationAccuracyCircle);
+        locationAccuracyCircle = null;
+      }
+      document.getElementById('fm-locate').classList.remove('fm-active');
+      showToast('GPS location off');
+      return;
+    }
     showToast('Finding current location...');
-    if (locationWatchId !== null) navigator.geolocation.clearWatch(locationWatchId);
     locationWatchId = navigator.geolocation.watchPosition(
       position => {
         const latlng = L.latLng(position.coords.latitude, position.coords.longitude);
@@ -969,6 +999,8 @@ window.addEventListener('load', function () {
         showToast('Current location shown');
       },
       error => {
+        locationWatchId = null;
+        document.getElementById('fm-locate').classList.remove('fm-active');
         const message = error.code === 1 ? 'Location permission was denied' : 'Unable to get current location';
         showToast(message);
       },
